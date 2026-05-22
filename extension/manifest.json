@@ -20,6 +20,7 @@
     {
       "matches": ["<all_urls>"],
       "js": [
+        "content/pattern-classifier.js",
         "content/dom-analyzer.js",
         "content/mutation-watcher.js",
         "content/counter-action.js",

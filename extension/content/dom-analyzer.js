@@ -110,13 +110,15 @@ function detectHiddenCosts() {
 
 // Utility functions to be defined or moved to relevant files
 function flagElement(el, type, severity) {
-  console.log(`[DPD] Flagged ${type} (${severity})`, el);
+  const finalSeverity = severity || (typeof PatternClassifier !== 'undefined' ? PatternClassifier.getSeverity(type) : 'MEDIUM');
+  console.log(`[DPD] Flagged ${type} (${finalSeverity})`, el);
   if (typeof window.flagElement === 'function' && window.flagElement !== flagElement) {
-    window.flagElement(el, type, severity);
+    window.flagElement(el, type, finalSeverity);
   }
 }
 
 function revealElement(el) {
+  if (!window.dpdAutoNeutralize) return;
   el.style.opacity = '1';
   el.style.visibility = 'visible';
   el.style.display = 'block';
@@ -129,6 +131,7 @@ function annotateWithBadge(el, msg) {
 }
 
 function rewriteButtonText(btn, text) {
+  if (!window.dpdAutoNeutralize) return;
   if (typeof engine !== 'undefined' && typeof engine.neutralizeShameText === 'function') {
     engine.neutralizeShameText(btn);
   }

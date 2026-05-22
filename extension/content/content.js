@@ -1,14 +1,66 @@
 // content.js
 
-const overlay = new DarkPatternOverlay();
-const engine = new CounterActionEngine();
+let overlay = null;
+let engine = null;
 
 async function init() {
     console.log("[DPD] Dark Pattern Destroyer initialized on", window.location.href);
     
-    // Start Layer 1
-    runAllDetectors();
-    startMutationWatcher();
+    // Load configurations from storage
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.get({
+            layer1: true,
+            layer2: true,
+            layer3: true,
+            autoNeutralize: true,
+            hudEnabled: true,
+            allowedDomains: ['example.com', 'localhost']
+        }, (settings) => {
+            const currentHost = window.location.hostname.toLowerCase();
+            const isExempt = settings.allowedDomains.some(d => {
+                const cleanedD = d.trim().toLowerCase();
+                return currentHost === cleanedD || currentHost.endsWith('.' + cleanedD);
+            });
+
+            if (isExempt) {
+                console.log(`[DPD] Host ${currentHost} is exempt. Aborting scan.`);
+                return;
+            }
+
+            // Expose configurations globally for dom-analyzer.js & counter-action.js
+            window.dpdAutoNeutralize = settings.autoNeutralize;
+            window.dpdLayer1 = settings.layer1;
+            window.dpdLayer2 = settings.layer2;
+            window.dpdLayer3 = settings.layer3;
+
+            // Instantiate engine first
+            engine = new CounterActionEngine();
+
+            // Instantiate HUD if enabled
+            if (settings.hudEnabled) {
+                overlay = new DarkPatternOverlay();
+            }
+
+            // Start Layer 1 heuristics if enabled
+            if (settings.layer1) {
+                runAllDetectors();
+                startMutationWatcher();
+            }
+        });
+    } else {
+        // Fallback mockup/development setup
+        console.log("[DPD] Chrome storage unavailable, running with all features enabled in mockup mode.");
+        window.dpdAutoNeutralize = true;
+        window.dpdLayer1 = true;
+        window.dpdLayer2 = true;
+        window.dpdLayer3 = true;
+        
+        engine = new CounterActionEngine();
+        overlay = new DarkPatternOverlay();
+        
+        runAllDetectors();
+        startMutationWatcher();
+    }
 }
 
 async function analyzeElementWithVision(element) {
@@ -28,18 +80,36 @@ async function analyzeElementWithVision(element) {
     payload: screenshotContext
   }, (response) => {
     if (response && response.is_dark_pattern) {
-      engine.executeCounterAction(element, response.pattern_type, response.confidence);
-      overlay.addAnnotation(element, response.pattern_type, 'HIGH', response.user_impact);
+      if (engine) engine.executeCounterAction(element, response.pattern_type, response.confidence);
+      if (overlay) overlay.addAnnotation(element, response.pattern_type, 'HIGH', response.user_impact);
     }
   });
 }
 
 // Intercept the flagElement from dom-analyzer.js to add UI annotations
 window.flagElement = (el, type, severity) => {
-    overlay.addAnnotation(el, type, severity, `Detected potential ${type.replace(/_/g, ' ')}. Severity: ${severity}.`);
+    if (overlay) {
+        overlay.addAnnotation(el, type, severity, `Detected potential ${type.replace(/_/g, ' ')}. Severity: ${severity}.`);
+    }
+    
+    // Auto-neutralize if settings allow
+    if (window.dpdAutoNeutralize && engine) {
+        engine.executeCounterAction(el, type, 1.0);
+    }
+
+    // Increment stats in local storage
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.get({ scannedCount: 0, neutralizedCount: 0 }, (items) => {
+            const updates = { scannedCount: items.scannedCount + 1 };
+            if (window.dpdAutoNeutralize) {
+                updates.neutralizedCount = items.neutralizedCount + 1;
+            }
+            chrome.storage.local.set(updates);
+        });
+    }
     
     // If it's highly critical or hidden, optionally run vision scan in background
-    if (severity === 'CRITICAL' || type === 'HIDDEN_EXIT_PATH') {
+    if (window.dpdLayer2 && (severity === 'CRITICAL' || type === 'HIDDEN_EXIT_PATH')) {
         // analyzeElementWithVision(el);
     }
 };
@@ -47,6 +117,10 @@ window.flagElement = (el, type, severity) => {
 // Listen to incoming messages from popup.js
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.type === 'GET_STATS') {
+        if (!overlay) {
+            sendResponse({ critical: 0, high: 0, medium: 0, trustScore: 100 });
+            return true;
+        }
         const patterns = Array.from(overlay.activeAnnotations.keys()).map(el => {
             let severity = 'LOW';
             if (el.classList.contains('dpd-flagged-critical')) severity = 'CRITICAL';
@@ -65,52 +139,57 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.type === 'EXECUTE_ALL_FIXES') {
-        overlay.activeAnnotations.forEach((tooltip, element) => {
-            const header = tooltip.querySelector('.dpd-tooltip-header')?.innerText?.replace('⚠️ ', '') || '';
-            const patternType = header.replace(/ /g, '_');
+        if (overlay && engine) {
+            overlay.activeAnnotations.forEach((tooltip, element) => {
+                const header = tooltip.querySelector('.dpd-tooltip-header')?.innerText?.replace('⚠️ ', '') || '';
+                const patternType = header.replace(/ /g, '_');
+                
+                engine.executeCounterAction(element, patternType, 1.0);
+                tooltip.remove();
+                element.classList.remove('dpd-flagged-critical', 'dpd-flagged-high', 'dpd-flagged-medium', 'dpd-flagged-low');
+            });
             
-            engine.executeCounterAction(element, patternType, 1.0);
-            tooltip.remove();
-            element.classList.remove('dpd-flagged-critical', 'dpd-flagged-high', 'dpd-flagged-medium', 'dpd-flagged-low');
-        });
-        
-        overlay.activeAnnotations.clear();
-        overlay.updateHUDStats();
+            overlay.activeAnnotations.clear();
+            overlay.updateHUDStats();
 
-        const blockedEl = document.getElementById('dpd-blocked-count');
-        if (blockedEl) {
-            blockedEl.textContent = 'All blocked';
+            const blockedEl = document.getElementById('dpd-blocked-count');
+            if (blockedEl) {
+                blockedEl.textContent = 'All blocked';
+            }
         }
-
         sendResponse({ success: true });
         return true;
     }
 
     if (request.type === 'START_CANCEL_FLOW') {
-        engine.planCancelJourney(window.location.href);
+        if (engine) {
+            engine.planCancelJourney(window.location.href);
+        }
         sendResponse({ success: true });
         return true;
     }
 
     if (request.type === 'SHOW_REPORT') {
-        const patterns = [];
-        overlay.activeAnnotations.forEach((tooltip, el) => {
-            const header = tooltip.querySelector('.dpd-tooltip-header')?.innerText || 'PATTERN';
-            const body = tooltip.querySelector('.dpd-tooltip-body')?.innerText || 'Description';
-            let severity = 'LOW';
-            if (el.classList.contains('dpd-flagged-critical')) severity = 'CRITICAL';
-            else if (el.classList.contains('dpd-flagged-high')) severity = 'HIGH';
-            else if (el.classList.contains('dpd-flagged-medium')) severity = 'MEDIUM';
-            
-            patterns.push({
-                id: Math.random().toString(),
-                type: header.replace('⚠️ ', '').replace(/ /g, '_'),
-                description: body,
-                severity: severity,
-                element: el
+        if (overlay) {
+            const patterns = [];
+            overlay.activeAnnotations.forEach((tooltip, el) => {
+                const header = tooltip.querySelector('.dpd-tooltip-header')?.innerText || 'PATTERN';
+                const body = tooltip.querySelector('.dpd-tooltip-body')?.innerText || 'Description';
+                let severity = 'LOW';
+                if (el.classList.contains('dpd-flagged-critical')) severity = 'CRITICAL';
+                else if (el.classList.contains('dpd-flagged-high')) severity = 'HIGH';
+                else if (el.classList.contains('dpd-flagged-medium')) severity = 'MEDIUM';
+                
+                patterns.push({
+                    id: Math.random().toString(),
+                    type: header.replace('⚠️ ', '').replace(/ /g, '_'),
+                    description: body,
+                    severity: severity,
+                    element: el
+                });
             });
-        });
-        overlay.showFullReport(patterns);
+            overlay.showFullReport(patterns);
+        }
         sendResponse({ success: true });
         return true;
     }
@@ -248,15 +327,19 @@ async function runAIVisionScan() {
                     console.log("[DPD] Vision flagged dark pattern!", result, el);
                     
                     // Execute auto-action immediately to neutralize the steer!
-                    engine.executeCounterAction(el, result.pattern_type, result.confidence);
+                    if (engine) {
+                        engine.executeCounterAction(el, result.pattern_type, result.confidence);
+                    }
                     
                     // Add visual warning overlay
-                    overlay.addAnnotation(
-                        el, 
-                        result.pattern_type || 'AI_FLAGGED_PATTERN', 
-                        result.confidence > 0.8 ? 'HIGH' : 'MEDIUM', 
-                        result.user_impact || 'Flagged by Local Llama 3.2 Vision Multi-Modal scan.'
-                    );
+                    if (overlay) {
+                        overlay.addAnnotation(
+                            el, 
+                            result.pattern_type || 'AI_FLAGGED_PATTERN', 
+                            result.confidence > 0.8 ? 'HIGH' : 'MEDIUM', 
+                            result.user_impact || 'Flagged by Local Llama 3.2 Vision Multi-Modal scan.'
+                        );
+                    }
                 }
             } catch (err) {
                 console.error("[DPD] Vision scanning step failed:", err);
@@ -272,7 +355,7 @@ async function runAIVisionScan() {
         toast.innerHTML = `🛡️ <strong>AI Visual Scan</strong><br><span style="color: #ff4444;">Analysis failed: ${error.message}</span>`;
         setTimeout(() => toast.remove(), 3000);
     } finally {
-        overlay.updateHUDStats();
+        if (overlay) overlay.updateHUDStats();
     }
 }
 

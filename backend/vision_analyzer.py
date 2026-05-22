@@ -2,11 +2,16 @@
 import httpx
 import re
 import json
+import base64
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
+from yolo_detector import DarkPatternYOLODetector
 
 router = APIRouter()
+
+# Instantiate singleton visual object detector
+yolo_detector = DarkPatternYOLODetector()
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
 VISION_MODEL = "llama3.2-vision:latest" # Explicitly use the pulled latest tag
@@ -42,10 +47,50 @@ You MUST respond in strict raw JSON format containing these exact keys. Do not i
 @router.post("/analyze-vision")
 async def analyze_vision(request: VisionAnalysisRequest):
     try:
-        # 1. Cleanse base64 prefix
+        import pattern_db
+        
+        # 1. Compute stable cache key using DOM context, element bounds, and URL
+        context_string = f"{request.page_url}_{json.dumps(request.element_bounds)}_{request.html_context or ''}"
+        dom_hash = pattern_db.compute_dom_hash(context_string)
+        
+        # 2. Check cache first
+        cached_result = pattern_db.get_cached_vision_result(dom_hash)
+        if cached_result is not None:
+            print(f"[Ollama Vision Cache] Returning cached result for {request.page_url}")
+            return cached_result
+            
+        # 3. Cleanse base64 prefix
         base64_image = re.sub(r'^data:image/.+;base64,', '', request.screenshot)
 
-        # 2. Build prompt context
+        # 3a. Execute Tier 2 YOLO/Fallback visual target scan
+        try:
+            image_bytes = base64.b64decode(base64_image)
+            detections = yolo_detector.detect(
+                screenshot_bytes=image_bytes, 
+                html_context=request.html_context, 
+                bounds=request.element_bounds
+            )
+            
+            if detections:
+                best_det = max(detections, key=lambda d: d.get("confidence", 0.0))
+                if not best_det.get("requires_vision_confirmation", True) and best_det.get("confidence", 0.0) >= 0.85:
+                    print(f"[Tier 2 YOLO] High confidence detection found: {best_det['pattern_type']}")
+                    yolo_result = {
+                        "is_dark_pattern": True,
+                        "pattern_type": best_det["pattern_type"],
+                        "confidence": best_det["confidence"],
+                        "affected_element_description": best_det.get("description", "Identified by YOLO v8 Visual Scan"),
+                        "user_impact": "Identified automatically by visual target detection.",
+                        "bypass_strategy": "Follow DPD neutralizing indicators.",
+                        "regulatory_violation": "GDPR/EU_DSA"
+                    }
+                    # Cache positive YOLO result
+                    pattern_db.cache_vision_result(dom_hash, yolo_result)
+                    return yolo_result
+        except Exception as err:
+            print(f"[Tier 2 YOLO Error] Detection step bypassed: {err}")
+
+        # 4. Build prompt context
         user_prompt = f"Page URL: {request.page_url}\n"
         
         if request.element_bounds:
@@ -68,7 +113,7 @@ async def analyze_vision(request: VisionAnalysisRequest):
             "and classify it according to the system rules."
         )
 
-        # 3. Query local Ollama Multimodal Chat API
+        # 5. Query local Ollama Multimodal Chat API
         async with httpx.AsyncClient(timeout=60.0) as client:
             payload = {
                 "model": VISION_MODEL,
@@ -95,6 +140,10 @@ async def analyze_vision(request: VisionAnalysisRequest):
             
             # Parse model output string into a dictionary
             classification_data = json.loads(model_response_text)
+            
+            # 6. Cache classification result
+            pattern_db.cache_vision_result(dom_hash, classification_data)
+            
             return classification_data
 
     except Exception as e:
@@ -109,3 +158,4 @@ async def analyze_vision(request: VisionAnalysisRequest):
             "bypass_strategy": "Proceed with caution",
             "regulatory_violation": None
         }
+

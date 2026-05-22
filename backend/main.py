@@ -3,6 +3,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from vision_analyzer import router as vision_router, VisionAnalysisRequest
 from bypass_planner import CancelJourneyPlanner, CancelRequest
+import pattern_db
 import uvicorn
 import os
 import json
@@ -17,6 +18,9 @@ app.add_middleware(
 )
 
 planner = CancelJourneyPlanner()
+
+# Initialize local SQLite database
+pattern_db.init_db()
 
 # Mock Redis caching logic
 class MemoryCache:
@@ -51,7 +55,33 @@ async def plan_cancel(request: CancelRequest):
 @app.post("/api/report-pattern")
 async def report_pattern(payload: dict):
     print(f"Received report: {payload}")
-    return {"status": "success"}
+    try:
+        url = payload.get("url", "unknown")
+        pattern_type = payload.get("pattern_type", "UNKNOWN")
+        severity = payload.get("severity", "MEDIUM")
+        description = payload.get("description", "")
+        confidence = float(payload.get("confidence", 1.0))
+        html_context = payload.get("html_context", "")
+        
+        pattern_db.add_reported_pattern(
+            url=url,
+            pattern_type=pattern_type,
+            severity=severity,
+            description=description,
+            confidence=confidence,
+            html_context=html_context
+        )
+        return {"status": "success", "message": "Pattern recorded in SQLite database"}
+    except Exception as e:
+        print(f"[API Error] Failed to store report: {e}")
+        return {"status": "partial_success", "error": str(e)}
+
+@app.get("/api/reported-patterns")
+async def get_reported_patterns():
+    try:
+        return pattern_db.get_reported_patterns()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/")
 async def root():
@@ -59,3 +89,5 @@ async def root():
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+

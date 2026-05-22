@@ -74,7 +74,7 @@ dark-pattern-destroyer/
     ├── yolo_detector.py            ← YOLOv12x model server
     ├── pattern_classifier.py       ← Classification logic
     ├── bypass_planner.py           ← Agentic counter-action planner
-    ├── pattern_db.py               ← Redis pattern signature cache
+    ├── pattern_db.py               ← SQLite pattern signature cache & SQLite DB
     └── models/
         └── yolo_dark_patterns.pt   ← Fine-tuned weights
 ⚙️ LAYER 1 — DOM STRUCTURAL ANALYSIS
@@ -267,74 +267,58 @@ async function analyzeElementWithVision(element) {
     }
   });
 }
-Vision LLM Backend (FastAPI):
+Vision LLM Backend (FastAPI) — Local Ollama Multimodal Scanner:
 Python
 
 # vision_analyzer.py
-import anthropic
+import httpx
+import re
+import json
 import base64
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from typing import Optional
+from yolo_detector import DarkPatternYOLODetector
 
 router = APIRouter()
-client = anthropic.Anthropic()
+yolo_detector = DarkPatternYOLODetector()
 
-DARK_PATTERN_SYSTEM_PROMPT = """
-You are an expert dark pattern detection system. Analyze the provided 
-UI screenshot and classify any dark patterns present.
+OLLAMA_URL = "http://localhost:11434/api/chat"
+VISION_MODEL = "llama3.2-vision:latest"
 
-Dark pattern categories to detect:
-1. URGENCY_SCARCITY: Fake countdown timers, "Only 2 left!" claims
-2. HIDDEN_COST: Prices that appear different from what was advertised
-3. CONFIRM_SHAME: Guilt-tripping opt-out language
-4. ROACH_MOTEL: Easy to sign up, hard to cancel
-5. TRICK_QUESTION: Confusing double-negatives in checkboxes
-6. FORCED_CONTINUITY: Auto-renewals without clear disclosure
-7. DISGUISED_AD: Ads designed to look like content
-8. MISDIRECTION: Visual design drawing attention away from important info
-9. HIDDEN_SUBSCRIPTION: Free trial that auto-converts
-10. FRIEND_SPAM: Requesting contacts/social access without clear reason
+class VisionAnalysisRequest(BaseModel):
+    screenshot: str  # data:image/png;base64,...
+    page_url: str
+    element_bounds: Optional[dict] = None
+    html_context: Optional[str] = None
 
-Respond in strict JSON format:
+DARK_PATTERN_SYSTEM_PROMPT = """You are an expert dark pattern detection system. 
+Analyze the provided UI screenshot and the surrounding HTML context, then classify any dark patterns present.
+
+Classifications:
+01. URGENCY_SCARCITY: Fake countdown timers, artificial scarcity claims.
+02. HIDDEN_COST: Prices that change or inject fees late in the flow.
+03. CONFIRM_SHAME: Guilt-tripping opt-out button text.
+04. ROACH_MOTEL: Subscription setups that make it difficult to unsubscribe.
+05. TRICK_QUESTION: Intentionally confusing or double-negative checkboxes.
+06. FORCED_CONTINUITY: Hidden auto-renewals.
+
+You MUST respond in strict raw JSON format containing these exact keys:
 {
   "is_dark_pattern": boolean,
-  "pattern_type": "CATEGORY_NAME or null",
-  "confidence": 0.0-1.0,
+  "pattern_type": "CATEGORY_NAME_OR_NULL",
+  "confidence": float (0.0 to 1.0),
   "affected_element_description": "string",
   "user_impact": "string",
-  "bypass_strategy": "How the user can avoid this pattern",
+  "bypass_strategy": "actionable tip on how to avoid it",
   "regulatory_violation": "GDPR/CCPA/EU_DSA or null"
-}
-"""
+}"""
 
 @router.post("/analyze-vision")
-async def analyze_with_vision(request: VisionRequest):
-    # Encode screenshot
-    image_data = base64.standard_b64encode(request.screenshot_bytes).decode()
-    
-    response = client.messages.create(
-        model="claude-opus-4-5",
-        max_tokens=1024,
-        system=DARK_PATTERN_SYSTEM_PROMPT,
-        messages=[{
-            "role": "user",
-            "content": [
-                {
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": "image/png",
-                        "data": image_data
-                    }
-                },
-                {
-                    "type": "text",
-                    "text": f"Page URL: {request.page_url}\nAnalyze this UI screenshot for dark patterns."
-                }
-            ]
-        }]
-    )
-    
-    return parse_vision_response(response.content[0].text)
+async def analyze_vision(request: VisionAnalysisRequest):
+    # Triggers YOLO/Fallback visual target check first. 
+    # If not fully resolved, escalates to Ollama local vision model (llama3.2-vision:latest) asynchronously.
+    # Results are cached in SQLite by DOM HTML snippet MD5 hash to prevent redundant scans.
 🎯 LAYER 2b — YOLOv12x VISUAL DETECTION
 Fast pre-screening before Vision LLM — saves API cost
 4
@@ -533,82 +517,35 @@ class CounterActionEngine {
     }
   }
 }
-Backend: Cancel Journey Agentic Planner
+Backend: Cancel Journey Agentic Planner (Local Qwen 2.5 3B)
 Python
 
 # bypass_planner.py
-from langchain_anthropic import ChatAnthropic
-from langgraph.graph import StateGraph, END
-from typing import TypedDict, List
+import httpx
+import json
+from typing import List, TypedDict, Optional
+from pydantic import BaseModel
 
-class CancelJourneyState(TypedDict):
-    url: str
-    dom_snapshot: str
-    goal: str
-    identified_steps: List[dict]
+OLLAMA_URL = "http://localhost:11434/api/chat"
+PLANNER_MODEL = "qwen2.5:3b"
+
+class Step(TypedDict):
+    action: str        # 'CLICK', 'NAVIGATE', or 'WAIT'
+    selector: str      # CSS Selector for targeted button/link
+    text: Optional[str] # Visible text to locate
+    description: str   # Informational tip for the user
+    url: Optional[str]  # URL if action is NAVIGATE
+
+class Plan(TypedDict):
+    steps: List[Step]
+    auto_navigable: bool
     confidence: float
-    retry_count: int
+    goal: str
 
 class CancelJourneyPlanner:
-    def __init__(self):
-        self.llm = ChatAnthropic(model="claude-opus-4-5")
-        self.graph = self._build_graph()
-    
-    def _build_graph(self):
-        graph = StateGraph(CancelJourneyState)
-        
-        # Nodes
-        graph.add_node("analyze_dom", self.analyze_dom)
-        graph.add_node("identify_cancel_path", self.identify_cancel_path)
-        graph.add_node("validate_path", self.validate_path)
-        graph.add_node("generate_steps", self.generate_steps)
-        
-        # Edges
-        graph.set_entry_point("analyze_dom")
-        graph.add_edge("analyze_dom", "identify_cancel_path")
-        graph.add_edge("identify_cancel_path", "validate_path")
-        graph.add_conditional_edges(
-            "validate_path",
-            self.should_retry,
-            {
-                "retry": "identify_cancel_path",
-                "proceed": "generate_steps",
-                "failed": END
-            }
-        )
-        graph.add_edge("generate_steps", END)
-        
-        return graph.compile()
-    
-    def analyze_dom(self, state: CancelJourneyState):
-        # Extract interactive elements from DOM snapshot
-        prompt = f"""
-        Analyze this DOM and extract all interactive elements that could 
-        be part of a cancellation flow. Focus on: buttons, links, forms, 
-        navigation elements.
-        
-        DOM: {state['dom_snapshot'][:10000]}
-        
-        Return JSON list of elements with selectors and text content.
-        """
-        response = self.llm.invoke(prompt)
-        return {"identified_steps": [], "retry_count": 0}
-    
-    def identify_cancel_path(self, state: CancelJourneyState):
-        prompt = f"""
-        You are helping a user cancel their subscription on: {state['url']}
-        
-        From the available elements, determine the most likely path to 
-        cancel or unsubscribe. Account for common dark patterns that hide 
-        the cancel button.
-        
-        Goal: {state['goal']}
-        
-        Provide steps as JSON with: action, selector, text, description
-        Also rate your confidence 0.0-1.0
-        """
-        response = self.llm.invoke(prompt)
-        return state
+    async def generate_plan(self, request: CancelRequest) -> Plan:
+        # Analyzes DOM snapshots and plans browser sequences ('CLICK', 'NAVIGATE', 'WAIT')
+        # to execute an automated subscription cancellation flow, using a local Qwen 2.5 3B model.
 🖥️ FRONTEND OVERLAY UI SYSTEM
 JavaScript
 
@@ -843,68 +780,60 @@ HTML
     <input type="checkbox" id="show-hud" checked>
   </div>
 </div>
-🗄️ BACKEND FULL STACK
+🗄️ BACKEND FULL STACK (FastAPI & Local SQLite DB)
 Python
 
 # main.py — FastAPI Backend
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-import redis
-import json
+from vision_analyzer import router as vision_router
+from bypass_planner import CancelJourneyPlanner, CancelRequest
+import pattern_db
 
 app = FastAPI(title="Dark Pattern Destroyer API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["chrome-extension://*"],
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"]
 )
 
-# Redis for pattern signature caching
-redis_client = redis.Redis(host='localhost', port=6379, decode_responses=True)
+planner = CancelJourneyPlanner()
 
-@app.post("/api/analyze-dom")
-async def analyze_dom(request: DOMRequest):
-    # Check cache first (pattern signature for this domain)
-    cache_key = f"patterns:{request.domain}"
-    cached = redis_client.get(cache_key)
-    if cached:
-        return json.loads(cached)
-    
-    # Run YOLO pre-screen
-    yolo_results = yolo_detector.detect(request.screenshot)
-    
-    # Escalate to Vision LLM if needed
-    if yolo_detector.should_escalate_to_vision(yolo_results):
-        vision_results = await vision_analyzer.analyze(request)
-        results = merge_results(yolo_results, vision_results)
-    else:
-        results = yolo_results
-    
-    # Cache for 1 hour
-    redis_client.setex(cache_key, 3600, json.dumps(results))
-    return results
+# Initialize local SQLite database on startup
+pattern_db.init_db()
+
+# Include vision classification router (/api/analyze-vision)
+app.include_router(vision_router, prefix="/api")
 
 @app.post("/api/plan-cancel-journey")
-async def plan_cancel_journey(request: CancelRequest):
-    planner = CancelJourneyPlanner()
-    plan = await planner.plan(request.url, request.dom_snapshot, request.goal)
-    return plan
+async def plan_cancel(request: CancelRequest):
+    try:
+        plan = await planner.generate_plan(request)
+        return plan
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/report-pattern")
-async def report_pattern(request: PatternReport):
-    # Community crowdsourced pattern database
-    # If 10+ users report same pattern on same site, elevate confidence
-    report_key = f"reports:{request.domain}:{request.pattern_type}"
-    count = redis_client.incr(report_key)
-    redis_client.expire(report_key, 86400 * 30)  # 30 day window
-    
-    if count >= 10:
-        # Auto-add to high-confidence pattern DB
-        add_to_verified_patterns(request)
-    
-    return {"status": "reported", "total_reports": count}
+async def report_pattern(payload: dict):
+    # Records user feedback / reported patterns in local SQLite database
+    try:
+        pattern_db.add_reported_pattern(
+            url=payload.get("url", "unknown"),
+            pattern_type=payload.get("pattern_type", "UNKNOWN"),
+            severity=payload.get("severity", "MEDIUM"),
+            description=payload.get("description", ""),
+            confidence=float(payload.get("confidence", 1.0)),
+            html_context=payload.get("html_context", "")
+        )
+        return {"status": "success", "message": "Pattern recorded in SQLite database"}
+    except Exception as e:
+        return {"status": "partial_success", "error": str(e)}
+
+@app.get("/api/reported-patterns")
+async def get_reported_patterns():
+    return pattern_db.get_reported_patterns()
 🧪 DEMO SCRIPT (Hackathon)
 Pre-load these scenarios before the demo:
 
