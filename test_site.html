@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Totally Legit Shopping Site</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+        }
+        header {
+            background: #333;
+            color: #fff;
+            padding: 1rem;
+            text-align: center;
+        }
+        .container {
+            max-width: 800px;
+            margin: 20px auto;
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        /* 1. Fake Urgency */
+        .urgency-banner {
+            background: #ff4444;
+            color: white;
+            padding: 10px;
+            text-align: center;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+        #countdown-timer {
+            font-size: 1.2em;
+            text-decoration: underline;
+        }
+
+        /* 2. Confirm Shaming */
+        .modal {
+            border: 1px solid #ddd;
+            padding: 20px;
+            background: #fff;
+            margin-bottom: 20px;
+            border-left: 5px solid #e91e63;
+        }
+        .btn-primary {
+            background: #e91e63;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .btn-shame {
+            background: transparent;
+            color: #888;
+            border: none;
+            cursor: pointer;
+            text-decoration: underline;
+            font-size: 0.9em;
+        }
+
+        /* 3. Pre-ticked Consent */
+        .newsletter-section {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+
+        /* 4. Hidden Exit Path (Roach Motel) */
+        .cancel-section {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+        }
+        .hidden-cancel-btn {
+            color: #f4f4f4; /* Same as background! */
+            background: none;
+            border: none;
+            font-size: 5px; /* Tiny! */
+            cursor: pointer;
+            opacity: 0.1;
+        }
+        .hidden-cancel-btn:hover {
+            color: #ccc;
+        }
+
+        /* 5. Price Injection simulator */
+        .price-tag {
+            font-size: 1.5em;
+            color: #2ecc71;
+            font-weight: bold;
+        }
+
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>ScammyDeals.com</h1>
+</header>
+
+<div class="urgency-banner">
+    🚨 HURRY! Sale ends in: <span id="countdown-timer">00:59</span>
+</div>
+
+<div class="container">
+    <h2>Special Offer: The "Dark" Hoodie</h2>
+    <p>Get the most manipulative hoodie on the market.</p>
+    <p class="price-tag" id="main-price">$19.99</p>
+    
+    <div class="modal">
+        <h3>Wait! Get 50% OFF your first order?</h3>
+        <p>Join 1,000,000+ smart shoppers today.</p>
+        <button class="btn-primary">YES, I WANT TO SAVE MONEY!</button>
+        <br><br>
+        <button class="btn-shame">No thanks, I prefer paying full price for everything and wasting my hard-earned money</button>
+    </div>
+
+    <div class="newsletter-section">
+        <h3>Newsletter Signup</h3>
+        <input type="email" placeholder="Enter your email...">
+        <br><br>
+        <label>
+            <input type="checkbox" checked id="marketing-cb"> 
+            I want to receive 50+ marketing emails a day from 3rd party partners
+        </label>
+    </div>
+
+    <div class="cancel-section">
+        <h3>Manage Account</h3>
+        <p>Enjoying your subscription? We hope you never leave.</p>
+        <p>If you really must find the exit...</p>
+        <!-- The "Hidden" Cancel Button -->
+        <button class="hidden-cancel-btn" id="cancel-link">Cancel Subscription</button>
+    </div>
+</div>
+
+<script>
+    // Fake Timer Logic
+    let timeLeft = 59;
+    const timerDisplay = document.getElementById('countdown-timer');
+    setInterval(() => {
+        if(timeLeft > 0) {
+            timeLeft--;
+            timerDisplay.innerText = `00:${timeLeft < 10 ? '0'+timeLeft : timeLeft}`;
+        } else {
+            timeLeft = 59; // Resets, common fake urgency trick
+        }
+    }, 1000);
+
+    // Simulated Price Injection
+    setTimeout(() => {
+        document.getElementById('main-price').innerText = "$29.99 (+$10 Service Fee)";
+    }, 5000);
+</script>
+
+</body>
+</html>

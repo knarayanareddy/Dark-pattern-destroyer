@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { width: 350px; font-family: sans-serif; padding: 15px; background: #f8f9fa; }
+        .header { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+        .site-info { font-size: 12px; color: #666; margin-bottom: 10px; }
+        .trust-score-container { text-align: center; margin-bottom: 20px; }
+        .trust-score { font-size: 48px; font-weight: bold; color: #00c851; }
+        .stats { display: flex; justify-content: space-around; margin-bottom: 20px; }
+        .stat-item { text-align: center; }
+        .stat-count { display: block; font-weight: bold; font-size: 18px; }
+        .stat-label { font-size: 10px; color: #666; }
+        button { width: 100%; padding: 10px; margin-bottom: 8px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        .btn-primary { background: #4285f4; color: white; }
+        .btn-outline { background: white; border: 1px solid #ddd; color: #333; }
+        .btn-danger { background: #ff4444; color: white; }
+        .toggle-group { margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px; }
+        .toggle-item { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 13px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <img src="../icons/icon48.png" width="24" alt="logo">
+        <h2 style="margin:0; font-size: 18px;">Dark Pattern Destroyer</h2>
+    </div>
+
+    <div class="site-info" id="current_site">Analyzing current site...</div>
+
+    <div class="trust-score-container">
+        <div class="trust-score" id="trust_score">--</div>
+        <div id="trust_level">Trust Level</div>
+    </div>
+
+    <div class="stats">
+        <div class="stat-item">
+            <span class="stat-count" id="critical_count">0</span>
+            <span class="stat-label">Critical</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-count" id="high_count">0</span>
+            <span class="stat-label">High</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-count" id="medium_count">0</span>
+            <span class="stat-label">Medium</span>
+        </div>
+    </div>
+
+    <button class="btn-primary" id="fix_all">⚔️ Fix All Patterns</button>
+    <button class="btn-primary" id="ai_scan" style="background: #a855f7; margin-bottom: 8px; color: white;">🔍 AI Visual Scan</button>
+    <button class="btn-outline" id="show_report">📊 Full Report</button>
+    <button class="btn-danger" id="help_cancel">🚀 Help Me Cancel</button>
+
+    <div class="toggle-group">
+        <div class="toggle-item">
+            <span>Auto-fix consent boxes</span>
+            <input type="checkbox" checked>
+        </div>
+        <div class="toggle-item">
+            <span>Fight Back Mode</span>
+            <input type="checkbox">
+        </div>
+        <div class="toggle-item">
+            <span>Show Trust Score on page</span>
+            <input type="checkbox" checked>
+        </div>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>

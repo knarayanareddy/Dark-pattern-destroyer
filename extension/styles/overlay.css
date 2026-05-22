@@ -1,0 +1,159 @@
+/* overlay.css - Refined "Fight Back" UI */
+
+:root {
+  --dpd-primary: #e91e63;
+  --dpd-bg: rgba(20, 20, 20, 0.95);
+  --dpd-border: #333;
+  --dpd-text: #ffffff;
+  --dpd-success: #00ff88;
+  --dpd-warning: #ffaa00;
+  --dpd-danger: #ff4444;
+}
+
+#dpd-hud {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 320px;
+    background: var(--dpd-bg);
+    color: var(--dpd-text);
+    border-radius: 16px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+    z-index: 2147483647; /* Maximum possible z-index */
+    font-family: 'Inter', system-ui, sans-serif;
+    padding: 20px;
+    border: 1px solid var(--dpd-border);
+    backdrop-filter: blur(10px);
+    transition: transform 0.3s ease;
+}
+
+#dpd-hud:hover {
+    transform: translateY(-5px);
+}
+
+.dpd-hud-header {
+    display: flex;
+    align-items: center;
+    font-weight: 800;
+    font-size: 18px;
+    margin-bottom: 16px;
+    color: var(--dpd-primary);
+    letter-spacing: -0.5px;
+}
+
+.dpd-hud-header::before {
+    content: '🛡️';
+    margin-right: 10px;
+}
+
+.dpd-hud-stats {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.dpd-stat-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 14px;
+    color: #aaa;
+}
+
+.dpd-stat-value {
+    color: #fff;
+    font-weight: 600;
+}
+
+.dpd-hud-actions {
+    display: flex;
+    gap: 12px;
+}
+
+.dpd-hud-actions button {
+    flex: 1;
+    background: #2a2a2a;
+    color: white;
+    border: 1px solid #444;
+    padding: 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+.dpd-hud-actions button:hover {
+    background: #333;
+    border-color: #666;
+}
+
+.dpd-hud-actions button#dpd-fight-back {
+    background: var(--dpd-primary);
+    border: none;
+    box-shadow: 0 4px 12px rgba(233, 30, 99, 0.3);
+}
+
+.dpd-hud-actions button#dpd-fight-back:hover {
+    filter: brightness(1.2);
+}
+
+/* Tooltips */
+.dpd-tooltip {
+    position: absolute;
+    z-index: 2147483646;
+    background: #fff;
+    color: #1a1a1a;
+    padding: 16px;
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    width: 240px;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.dpd-tooltip-header {
+    font-weight: 800;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.dpd-btn-action {
+    margin-top: 12px;
+    width: 100%;
+    background: #1a1a1a;
+    color: white;
+    border: none;
+    padding: 8px;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+/* Flagging Animations */
+.dpd-flagged-critical {
+    outline: 4px solid var(--dpd-danger) !important;
+    outline-offset: 2px;
+    animation: dpd-glow-danger 2s infinite;
+}
+
+@keyframes dpd-glow-danger {
+    0% { outline-color: rgba(255, 68, 68, 0.8); }
+    50% { outline-color: rgba(255, 68, 68, 0.2); }
+    100% { outline-color: rgba(255, 68, 68, 0.8); }
+}
+
+.dpd-badge {
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    background: var(--dpd-warning);
+    color: #000;
+    padding: 4px 8px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 800;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}

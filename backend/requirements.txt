@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+pydantic
+redis
+anthropic
+pillow
+python-multipart
+httpx
+
