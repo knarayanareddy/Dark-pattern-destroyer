@@ -40,5 +40,7 @@ function isModalOrOverlay(node) {
 
 function analyzeModalWithVision(node) {
     console.log("[DPD] Modal detected, potentially escalating to Vision AI", node);
-    // Implementation in content.js
+    if (typeof window.analyzeModalWithVision === 'function') {
+        window.analyzeModalWithVision(node);
+    }
 }

@@ -121,4 +121,60 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (chrome.runtime.lastError) {}
         });
     });
+
+    // Select checkbox elements
+    const autoNeutralizeCb = document.getElementById('toggle-auto-neutralize');
+    const fightBackCb = document.getElementById('toggle-fight-back');
+    const hudCb = document.getElementById('toggle-hud');
+
+    // Load settings from storage
+    chrome.storage.local.get({
+        autoNeutralize: true,
+        layer3: false,
+        hudEnabled: true
+    }, (settings) => {
+        if (autoNeutralizeCb) autoNeutralizeCb.checked = settings.autoNeutralize;
+        if (fightBackCb) fightBackCb.checked = settings.layer3;
+        if (hudCb) hudCb.checked = settings.hudEnabled;
+    });
+
+    // Register checkbox change handlers
+    if (autoNeutralizeCb) {
+        autoNeutralizeCb.addEventListener('change', () => {
+            chrome.storage.local.set({ autoNeutralize: autoNeutralizeCb.checked }, () => {
+                if (tab) {
+                    chrome.tabs.sendMessage(tab.id, { 
+                        type: 'SETTINGS_CHANGED', 
+                        settings: { autoNeutralize: autoNeutralizeCb.checked } 
+                    }, () => { if (chrome.runtime.lastError) {} });
+                }
+            });
+        });
+    }
+
+    if (fightBackCb) {
+        fightBackCb.addEventListener('change', () => {
+            chrome.storage.local.set({ layer3: fightBackCb.checked }, () => {
+                if (tab) {
+                    chrome.tabs.sendMessage(tab.id, { 
+                        type: 'SETTINGS_CHANGED', 
+                        settings: { layer3: fightBackCb.checked } 
+                    }, () => { if (chrome.runtime.lastError) {} });
+                }
+            });
+        });
+    }
+
+    if (hudCb) {
+        hudCb.addEventListener('change', () => {
+            chrome.storage.local.set({ hudEnabled: hudCb.checked }, () => {
+                if (tab) {
+                    chrome.tabs.sendMessage(tab.id, { 
+                        type: 'TOGGLE_HUD', 
+                        enabled: hudCb.checked 
+                    }, () => { if (chrome.runtime.lastError) {} });
+                }
+            });
+        });
+    }
 });

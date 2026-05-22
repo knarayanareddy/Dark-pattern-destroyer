@@ -110,12 +110,49 @@ window.flagElement = (el, type, severity) => {
     
     // If it's highly critical or hidden, optionally run vision scan in background
     if (window.dpdLayer2 && (severity === 'CRITICAL' || type === 'HIDDEN_EXIT_PATH')) {
-        // analyzeElementWithVision(el);
+        analyzeElementWithVision(el);
+    }
+};
+
+window.analyzeModalWithVision = (node) => {
+    if (window.dpdLayer2) {
+        console.log("[DPD] Triggering modal visual analysis via local Vision LLM...", node);
+        analyzeElementWithVision(node);
     }
 };
 
 // Listen to incoming messages from popup.js
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.type === 'TOGGLE_HUD') {
+        const hud = document.getElementById('dpd-hud');
+        if (request.enabled) {
+            if (hud) {
+                hud.style.display = 'block';
+            } else {
+                overlay = new DarkPatternOverlay();
+            }
+        } else {
+            if (hud) {
+                hud.style.display = 'none';
+            }
+        }
+        sendResponse({ success: true });
+        return true;
+    }
+
+    if (request.type === 'SETTINGS_CHANGED') {
+        if (request.settings) {
+            if (request.settings.hasOwnProperty('autoNeutralize')) {
+                window.dpdAutoNeutralize = request.settings.autoNeutralize;
+            }
+            if (request.settings.hasOwnProperty('layer3')) {
+                window.dpdLayer3 = request.settings.layer3;
+            }
+        }
+        sendResponse({ success: true });
+        return true;
+    }
+
     if (request.type === 'GET_STATS') {
         if (!overlay) {
             sendResponse({ critical: 0, high: 0, medium: 0, trustScore: 100 });
